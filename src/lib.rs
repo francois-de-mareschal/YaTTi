@@ -1,3 +1,7 @@
+use crossterm::{
+    event::{self, Event, KeyCode},
+    terminal,
+};
 use std::collections::VecDeque;
 use std::error::Error;
 use std::time::{Duration, Instant};
@@ -20,9 +24,56 @@ pub struct Config {
 
 // Run the calculations from keys hits.
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let mut _registered_hits = RegisteredHits::new(config.sample_size as usize)?;
+    let mut registered_hits = RegisteredHits::new(config.sample_size as usize)?;
+
+    // Read key hits continuously until user hits 'q' or 'Esc'.
+    loop {
+        // Enable raw mode to directly receive user inputs rather than line-buffered.
+        terminal::enable_raw_mode()?;
+        // Block waiting for any event.
+        match event::read()? {
+            // Filter event to keep only key hits events.
+            Event::Key(event) => match event.code {
+                // Check which key was hit.
+                KeyCode::Char(c) => match c {
+                    // Quit if 'q' was hit.
+                    'q' => break,
+                    // Register an hit for any other character key (including space).
+                    _ => registered_hits.new_hit(),
+                },
+                // Also register an hit on 'Enter' key.
+                KeyCode::Enter => registered_hits.new_hit(),
+                // Quit if 'Esc' was hit (easier for beginners, battle-tested on beloved Mom).
+                KeyCode::Esc => break,
+                // Continue looping on any other non-character key hit.
+                _ => continue,
+            },
+            // Continue looping on any other non-key event (such as resizing or mouse).
+            _ => continue,
+        }
+        // Disable raw mode to display processing infos to user.
+        terminal::disable_raw_mode()?;
+
+        // Display tempo information to the user.
+        if let Some(duration) = registered_hits.next() {
+            println!(
+                "[TEMPO] {:.precision$} BPM",
+                process_tempo(duration),
+                precision = config.precision as usize
+            )
+        } else {
+            println!("[INFO] hit any key again to run tempo processing...")
+        }
+    }
+
+    // Disable raw mode again, since it was not disabled by breaking the loop to exit.
+    terminal::disable_raw_mode()?;
 
     Ok(())
+}
+// Process the tempo in BPM unit.
+fn process_tempo(duration: Duration) -> f64 {
+    (1_f64 / duration.as_secs_f64()) * 60_f64
 }
 
 #[derive(Debug, PartialEq)]
