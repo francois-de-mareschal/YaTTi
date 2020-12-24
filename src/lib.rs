@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::error::Error;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
 
 // Define struct to retain settings.
@@ -20,6 +20,8 @@ pub struct Config {
 
 // Run the calculations from keys hits.
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    let mut _registered_hits = RegisteredHits::new(config.sample_size as usize)?;
+
     Ok(())
 }
 
@@ -51,6 +53,28 @@ impl RegisteredHits {
     }
 }
 
+impl Iterator for RegisteredHits {
+    type Item = Duration;
+
+    // Yield the duration since the two last key hits.
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.hits.len() <= 1 {
+            None
+        } else {
+            // Process the elapsed time between key hits.
+            let duration = self
+                .hits
+                .back()?
+                .duration_since(*self.hits.front()?)
+                .checked_div(self.hits.len() as u32 - 1);
+            // Remove the oldest time to avoid yielding two times the same value.
+            self.hits.pop_front();
+
+            duration
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,6 +90,12 @@ mod tests {
         let registered_hits = RegisteredHits::new(10).unwrap();
         assert!(registered_hits.hits.capacity() >= 10);
         assert_eq!(registered_hits.hits.len(), 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn registered_hits_ko_sample_size_le_1_unwrapped() {
+        let _registered_hits = RegisteredHits::new(1).unwrap();
     }
 
     #[test]
@@ -91,5 +121,35 @@ mod tests {
         let number_hits = registered_hits.hits.len();
         registered_hits.new_hit();
         assert_eq!(registered_hits.hits.len(), number_hits);
+    }
+
+    #[test]
+    #[should_panic]
+    fn registered_hits_iter_next_ko_with_le_1_sample_value() {
+        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        registered_hits.new_hit();
+        registered_hits.next().unwrap();
+    }
+
+    #[test]
+    fn registered_hits_iter_next_ok() {
+        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        for _ in 0..2 {
+            registered_hits.new_hit();
+        }
+        registered_hits.next().unwrap();
+    }
+
+    #[test]
+    fn registered_hits_iter_next_ok_with_sample_values() {
+        use std::thread;
+        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        for _ in 0..5 {
+            registered_hits.new_hit();
+            thread::sleep(Duration::from_millis(100));
+        }
+        for duration in registered_hits {
+            assert_eq!(duration.as_millis(), Duration::from_millis(100).as_millis());
+        }
     }
 }
