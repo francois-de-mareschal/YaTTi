@@ -1,6 +1,6 @@
 [package]
 name = "yatti"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["François de Mareschal <francois.de-mareschal@outlook.fr>"]
 edition = "2018"
 
