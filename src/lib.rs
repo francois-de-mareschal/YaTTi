@@ -1,4 +1,3 @@
-use crossterm::event::KeyCode::Insert;
 use crossterm::{
     event::{self, Event, KeyCode},
     terminal,
@@ -106,9 +105,9 @@ impl RegisteredHits {
     fn new_hit(&mut self) {
         let now = Instant::now();
         // Check if last user hit was earlier than reset_time.
-        self.reset_and_push_hits(&now);
-        // Register the hit time as soon as possible.
-        self.hits.push_back(Instant::now());
+        self.reset_hits_on_timeout(&now);
+        // Register the user hit time.
+        self.hits.push_back(now);
         // Remove the oldest time stamp if sample size is over its maximum.
         if self.hits.len() > self.sample_size {
             self.hits.pop_front();
@@ -119,9 +118,11 @@ impl RegisteredHits {
         self.hits.clear();
     }
 
-    fn reset_and_push_hits(&mut self, now: &Instant) {
+    fn reset_hits_on_timeout(&mut self, now: &Instant) {
         if let Some(last_user_hit) = self.hits.back() {
-            if now.duration_since(*last_user_hit).as_secs() > self.reset_time {
+            if now.duration_since(*last_user_hit).as_secs_f64()
+                > Duration::from_secs_f64(self.reset_time as f64).as_secs_f64()
+            {
                 self.reset_hits();
             }
         }
@@ -188,6 +189,32 @@ mod tests {
     fn registered_hits_ko_reset_time_lt_1() {
         let registered_hits = RegisteredHits::new(10, 0);
         assert_eq!(registered_hits, Err("reset time must be at least one."));
+    }
+
+    #[test]
+    fn registered_hits_ok_timeout_not_triggered() {
+        use std::thread;
+        let mut registered_hits = RegisteredHits::new(10, 2).unwrap();
+        for _ in 0..10 {
+            registered_hits.new_hit();
+        }
+        thread::sleep(Duration::from_secs(1));
+        assert_eq!(registered_hits.hits.len(), 10);
+        registered_hits.new_hit();
+        assert_eq!(registered_hits.hits.len(), 10);
+    }
+
+    #[test]
+    fn registered_hits_ok_timeout_triggered() {
+        use std::thread;
+        let mut registered_hits = RegisteredHits::new(10, 1).unwrap();
+        for _ in 0..10 {
+            registered_hits.new_hit();
+        }
+        thread::sleep(Duration::from_secs_f64(1.5_f64));
+        assert_eq!(registered_hits.hits.len(), 10);
+        registered_hits.new_hit();
+        assert_eq!(registered_hits.hits.len(), 1);
     }
 
     #[test]
