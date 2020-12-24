@@ -51,6 +51,10 @@ impl RegisteredHits {
             self.hits.pop_front();
         }
     }
+
+    fn reset_hits(&mut self) {
+        self.hits.clear();
+    }
 }
 
 impl Iterator for RegisteredHits {
@@ -150,5 +154,41 @@ mod tests {
             let duration = registered_hits.next().unwrap();
             assert_eq!(duration.as_millis(), Duration::from_millis(50).as_millis());
         }
+    }
+
+    #[test]
+    fn registered_hits_reset_ok_len_0() {
+        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        for _ in 0..10 {
+            registered_hits.new_hit();
+        }
+        registered_hits.reset_hits();
+        assert!(registered_hits.hits.is_empty());
+    }
+
+    #[test]
+    fn registered_hits_reset_ok_capacity_ge_sample_size() {
+        let sample_size: usize = 5;
+        let mut registered_hits = RegisteredHits::new(sample_size).unwrap();
+        for _ in 0..10 {
+            registered_hits.new_hit();
+        }
+        registered_hits.reset_hits();
+        assert!(registered_hits.hits.capacity() >= sample_size);
+    }
+
+    #[test]
+    fn registered_hits_ok_len_0_no_hits() {
+        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        registered_hits.reset_hits();
+        assert!(registered_hits.hits.is_empty());
+    }
+
+    #[test]
+    fn registered_hits_reset_ok_capacity_ge_sample_size_no_hits() {
+        let sample_size: usize = 5;
+        let mut registered_hits = RegisteredHits::new(sample_size).unwrap();
+        registered_hits.reset_hits();
+        assert!(registered_hits.hits.capacity() >= sample_size);
     }
 }
