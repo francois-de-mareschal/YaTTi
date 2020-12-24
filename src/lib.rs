@@ -67,8 +67,6 @@ impl Iterator for RegisteredHits {
                 .back()?
                 .duration_since(*self.hits.front()?)
                 .checked_div(self.hits.len() as u32 - 1);
-            // Remove the oldest time to avoid yielding two times the same value.
-            self.hits.pop_front();
 
             duration
         }
@@ -144,12 +142,13 @@ mod tests {
     fn registered_hits_iter_next_ok_with_sample_values() {
         use std::thread;
         let mut registered_hits = RegisteredHits::new(5).unwrap();
-        for _ in 0..5 {
+        registered_hits.new_hit();
+        thread::sleep(Duration::from_millis(50));
+        for _ in 0..9 {
             registered_hits.new_hit();
-            thread::sleep(Duration::from_millis(100));
-        }
-        for duration in registered_hits {
-            assert_eq!(duration.as_millis(), Duration::from_millis(100).as_millis());
+            thread::sleep(Duration::from_millis(50));
+            let duration = registered_hits.next().unwrap();
+            assert_eq!(duration.as_millis(), Duration::from_millis(50).as_millis());
         }
     }
 }
