@@ -1,3 +1,4 @@
+use crossterm::event::KeyCode::Insert;
 use crossterm::{
     event::{self, Event, KeyCode},
     terminal,
@@ -16,15 +17,15 @@ pub struct Config {
     pub precision: u8,
     /// Set the time (in sec) before the calculation resets to 0.
     #[structopt(short, long, default_value = "5")]
-    pub reset_time: u32,
+    pub reset_time: u64,
     /// Set the sample size needed to process the tempo.
     #[structopt(short, long, default_value = "5")]
-    pub sample_size: u32,
+    pub sample_size: u64,
 }
 
 // Run the calculations from keys hits.
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let mut registered_hits = RegisteredHits::new(config.sample_size as usize)?;
+    let mut registered_hits = RegisteredHits::new(config.sample_size as usize, config.reset_time)?;
 
     // Read key hits continuously until user hits 'q' or 'Esc'.
     loop {
@@ -71,6 +72,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
 // Process the tempo in BPM unit.
 fn process_tempo(duration: Duration) -> f64 {
     (1_f64 / duration.as_secs_f64()) * 60_f64
@@ -80,21 +82,31 @@ fn process_tempo(duration: Duration) -> f64 {
 struct RegisteredHits {
     hits: VecDeque<Instant>,
     sample_size: usize,
+    reset_time: u64,
 }
 
 impl RegisteredHits {
-    fn new(sample_size: usize) -> Result<RegisteredHits, &'static str> {
+    fn new(sample_size: usize, reset_time: u64) -> Result<RegisteredHits, &'static str> {
         // Check the given sample_size is not lower than or equal to one, since it will
         // be impossible to process the duration on zero or one elements.
         if sample_size <= 1 {
             Err("sample size must be at least two.")
+        } else if reset_time < 1 {
+            Err("reset time must be at least one.")
         } else {
             let hits: VecDeque<Instant> = VecDeque::with_capacity(sample_size);
-            Ok(RegisteredHits { hits, sample_size })
+            Ok(RegisteredHits {
+                hits,
+                sample_size,
+                reset_time,
+            })
         }
     }
 
     fn new_hit(&mut self) {
+        let now = Instant::now();
+        // Check if last user hit was earlier than reset_time.
+        self.reset_and_push_hits(&now);
         // Register the hit time as soon as possible.
         self.hits.push_back(Instant::now());
         // Remove the oldest time stamp if sample size is over its maximum.
@@ -105,6 +117,14 @@ impl RegisteredHits {
 
     fn reset_hits(&mut self) {
         self.hits.clear();
+    }
+
+    fn reset_and_push_hits(&mut self, now: &Instant) {
+        if let Some(last_user_hit) = self.hits.back() {
+            if now.duration_since(*last_user_hit).as_secs() > self.reset_time {
+                self.reset_hits();
+            }
+        }
     }
 }
 
@@ -134,13 +154,14 @@ mod tests {
 
     #[test]
     fn registered_hits_ok_sample_size() {
-        let registered_hits = RegisteredHits::new(10).unwrap();
+        let registered_hits = RegisteredHits::new(10, 10).unwrap();
         assert_eq!(registered_hits.sample_size, 10);
+        assert_eq!(registered_hits.reset_time, 10);
     }
 
     #[test]
     fn registered_hits_ok_queue_len() {
-        let registered_hits = RegisteredHits::new(10).unwrap();
+        let registered_hits = RegisteredHits::new(10, 10).unwrap();
         assert!(registered_hits.hits.capacity() >= 10);
         assert_eq!(registered_hits.hits.len(), 0);
     }
@@ -148,18 +169,30 @@ mod tests {
     #[test]
     #[should_panic]
     fn registered_hits_ko_sample_size_le_1_unwrapped() {
-        let _registered_hits = RegisteredHits::new(1).unwrap();
+        let _registered_hits = RegisteredHits::new(1, 10).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn registered_hits_ko_reset_time_lt_1_unwrapped() {
+        let _registered_hits = RegisteredHits::new(10, 0).unwrap();
     }
 
     #[test]
     fn registered_hits_ko_sample_size_le_1() {
-        let registered_hits = RegisteredHits::new(1);
+        let registered_hits = RegisteredHits::new(1, 10);
         assert_eq!(registered_hits, Err("sample size must be at least two."));
     }
 
     #[test]
+    fn registered_hits_ko_reset_time_lt_1() {
+        let registered_hits = RegisteredHits::new(10, 0);
+        assert_eq!(registered_hits, Err("reset time must be at least one."));
+    }
+
+    #[test]
     fn register_new_hit_queue_not_full() {
-        let mut registered_hits = RegisteredHits::new(10).unwrap();
+        let mut registered_hits = RegisteredHits::new(10, 10).unwrap();
         let number_hits = registered_hits.hits.len();
         registered_hits.new_hit();
         assert_eq!(registered_hits.hits.len(), number_hits + 1);
@@ -167,7 +200,7 @@ mod tests {
 
     #[test]
     fn register_new_hit_queue_full() {
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         for _ in 0..10 {
             registered_hits.new_hit();
         }
@@ -179,14 +212,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn registered_hits_iter_next_ko_with_le_1_sample_value() {
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         registered_hits.new_hit();
         registered_hits.next().unwrap();
     }
 
     #[test]
     fn registered_hits_iter_next_ok() {
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         for _ in 0..2 {
             registered_hits.new_hit();
         }
@@ -196,7 +229,7 @@ mod tests {
     #[test]
     fn registered_hits_iter_next_ok_with_sample_values() {
         use std::thread;
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         registered_hits.new_hit();
         thread::sleep(Duration::from_millis(50));
         for _ in 0..9 {
@@ -209,7 +242,7 @@ mod tests {
 
     #[test]
     fn registered_hits_reset_ok_len_0() {
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         for _ in 0..10 {
             registered_hits.new_hit();
         }
@@ -220,7 +253,7 @@ mod tests {
     #[test]
     fn registered_hits_reset_ok_capacity_ge_sample_size() {
         let sample_size: usize = 5;
-        let mut registered_hits = RegisteredHits::new(sample_size).unwrap();
+        let mut registered_hits = RegisteredHits::new(sample_size, 10).unwrap();
         for _ in 0..10 {
             registered_hits.new_hit();
         }
@@ -230,7 +263,7 @@ mod tests {
 
     #[test]
     fn registered_hits_ok_len_0_no_hits() {
-        let mut registered_hits = RegisteredHits::new(5).unwrap();
+        let mut registered_hits = RegisteredHits::new(5, 10).unwrap();
         registered_hits.reset_hits();
         assert!(registered_hits.hits.is_empty());
     }
@@ -238,7 +271,7 @@ mod tests {
     #[test]
     fn registered_hits_reset_ok_capacity_ge_sample_size_no_hits() {
         let sample_size: usize = 5;
-        let mut registered_hits = RegisteredHits::new(sample_size).unwrap();
+        let mut registered_hits = RegisteredHits::new(sample_size, 10).unwrap();
         registered_hits.reset_hits();
         assert!(registered_hits.hits.capacity() >= sample_size);
     }
