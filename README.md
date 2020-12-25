@@ -92,3 +92,6 @@ Hit any key (but q) in cadence (q to quit).
 Goodbye!
 ```
 
+## License
+
+Licensed under the EUPL
