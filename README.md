@@ -70,7 +70,7 @@ OPTIONS:
 Run the tool from the git repository:
 
 ```sh
-➜  yatti git:(master) ✗ cargo run --release          
+➜  yatti git:(master) cargo run --release
     Finished release [optimized] target(s) in 0.04s
      Running `target/release/yatti`
 Hit any key (but q) in cadence (q to quit).

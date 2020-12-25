@@ -3,6 +3,11 @@ name = "yatti"
 version = "0.3.0"
 authors = ["François de Mareschal <francois.de-mareschal@outlook.fr>"]
 edition = "2018"
+description = "YaTTi is Yet another TapTempo implementation"
+readme = "README.md"
+repository = "https://gitlab.com/francois-de-mareschal/yatti"
+license = "EUPL-1.2"
+license-file = "LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
