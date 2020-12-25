@@ -13,7 +13,8 @@ the corresponding tempo, in Beats Per Minute.
 
 ## Build
 
-YaTTi is written in Rust, so once the Rust toolchain is installed, all you
+YaTTi is written in Rust, so once the Rust toolchain 
+[is installed](https://www.rust-lang.org/tools/install), all you
 need is ~~love~~:
 
 ```sh
